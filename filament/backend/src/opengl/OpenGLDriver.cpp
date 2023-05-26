@@ -165,7 +165,8 @@ OpenGLDriver::DebugMarker::~DebugMarker() noexcept {
 // ------------------------------------------------------------------------------------------------
 
 OpenGLDriver::OpenGLDriver(OpenGLPlatform* platform, const Platform::DriverConfig& driverConfig) noexcept
-        : mHandleAllocator("Handles", driverConfig.handleArenaSize),
+        : mShaderCompilerService(*this),
+          mHandleAllocator("Handles", driverConfig.handleArenaSize),
           mSamplerMap(32),
           mPlatform(*platform) {
   
@@ -1464,7 +1465,6 @@ void OpenGLDriver::destroyProgram(Handle<HwProgram> ph) {
     DEBUG_MARKER()
     if (ph) {
         OpenGLProgram* p = handle_cast<OpenGLProgram*>(ph);
-        cancelRunAtNextPassOp(p);
         destruct(ph, p);
     }
 }
@@ -2609,18 +2609,14 @@ SyncStatus OpenGLDriver::getSyncStatus(Handle<HwSync> sh) {
 
 void OpenGLDriver::compilePrograms(CallbackHandler* handler,
         CallbackHandler::Callback callback, void* user) {
-    // TODO: this works because currently `executeRenderPassOps` is only used for compiling
-    //       materials. If that changed, we'd have to only execute the callbacks related to
-    //       material compilation.
-    executeRenderPassOps();
-    scheduleCallback(handler, user, callback);
+    getShaderCompilerService().notifyWhenAllProgramsAreReady(handler, callback, user);
 }
 
 void OpenGLDriver::beginRenderPass(Handle<HwRenderTarget> rth,
         const RenderPassParams& params) {
     DEBUG_MARKER()
 
-    executeRenderPassOps();
+    getShaderCompilerService().tick();
 
     auto& gl = mContext;
 
@@ -3220,25 +3216,6 @@ void OpenGLDriver::executeEveryNowAndThenOps() noexcept {
     }
 }
 
-void OpenGLDriver::runAtNextRenderPass(void* token, std::function<void()> fn) noexcept {
-    assert_invariant(mRunAtNextRenderPassOps.find(token) == mRunAtNextRenderPassOps.end());
-    mRunAtNextRenderPassOps[token] = std::move(fn);
-}
-
-void OpenGLDriver::cancelRunAtNextPassOp(void* token) noexcept {
-    mRunAtNextRenderPassOps.erase(token);
-}
-
-void OpenGLDriver::executeRenderPassOps() noexcept {
-    auto& ops = mRunAtNextRenderPassOps;
-    if (!ops.empty()) {
-        for (auto& item: ops) {
-            item.second();
-        }
-        ops.clear();
-    }
-}
-
 // ------------------------------------------------------------------------------------------------
 // Rendering ops
 // ------------------------------------------------------------------------------------------------
@@ -3556,7 +3533,7 @@ void OpenGLDriver::draw(PipelineState state, Handle<HwRenderPrimitive> rph, uint
 }
 
 void OpenGLDriver::dispatchCompute(Handle<HwProgram> program, math::uint3 workGroupCount) {
-    executeRenderPassOps();
+    getShaderCompilerService().tick();
 
     OpenGLProgram* p = handle_cast<OpenGLProgram*>(program);
 
