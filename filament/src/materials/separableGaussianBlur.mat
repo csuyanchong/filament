@@ -1,0 +1,67 @@
+material {
+    name : separableGaussianBlur,
+    parameters : [
+        {
+            type : sampler2d,
+            name : source,
+            precision: medium
+        },
+        {
+            type : sampler2dArray,
+            name : sourceArray,
+            precision: medium
+        },
+        {
+            type : float2,
+            name : axis
+        },
+        {
+            type : float,
+            name : level
+        },
+        {
+            type : float,
+            name : layer
+        },
+        {
+            type : int,
+            name : count
+        },
+        {
+            type : int,
+            name : reinhard
+        },
+        {
+            type : float2[32],
+            name : kernel
+        }
+    ],
+    constants : [
+        {
+            type : bool,
+            name : arraySampler,
+            default : false
+        },
+        {
+            type : int,
+            name : componentCount,
+            default : 4
+        }
+    ],
+    variables : [
+        vertex
+    ],
+    domain : postprocess,
+    depthWrite : false,
+    depthCulling : false
+}
+
+vertex {
+#include "separableGaussianBlur.vs"
+}
+
+fragment {
+
+#include "separableGaussianBlur.fs"
+
+}
